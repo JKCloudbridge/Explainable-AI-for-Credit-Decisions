@@ -1,0 +1,46 @@
+{
+  "dataset": "Statlog (German Credit Data) \u2014 UCI id 144",
+  "decision_threshold": 0.5,
+  "models": {
+    "logistic_regression": {
+      "cv_roc_auc_mean": 0.7687872023809523,
+      "cv_roc_auc_std": 0.05327492662269847,
+      "test": {
+        "threshold": 0.5,
+        "roc_auc": 0.8058333333333333,
+        "pr_auc": 0.6327989038461923,
+        "brier": 0.1824213286545821,
+        "accuracy": 0.75,
+        "precision": 0.5581395348837209,
+        "recall": 0.8,
+        "f1": 0.6575342465753424,
+        "confusion_matrix": {
+          "tn": 102,
+          "fp": 38,
+          "fn": 12,
+          "tp": 48
+        }
+      }
+    },
+    "xgboost": {
+      "cv_roc_auc_mean": 0.7903645833333333,
+      "cv_roc_auc_std": 0.03543397404993367,
+      "test": {
+        "threshold": 0.5,
+        "roc_auc": 0.7844047619047618,
+        "pr_auc": 0.6191533595587846,
+        "brier": 0.18020835615096187,
+        "accuracy": 0.74,
+        "precision": 0.5526315789473685,
+        "recall": 0.7,
+        "f1": 0.6176470588235294,
+        "confusion_matrix": {
+          "tn": 106,
+          "fp": 34,
+          "fn": 18,
+          "tp": 42
+        }
+      }
+    }
+  }
+}

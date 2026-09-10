@@ -1,0 +1,16 @@
+# Python 3.11 — install into a venv:
+#   python -m venv .venv
+#   .venv\Scripts\pip install -r requirements.txt
+#
+# Pins are a mutually-tested set; numpy is held < 2 for streamlit 1.39.
+
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.1
+scikit-learn==1.5.2
+xgboost==2.1.4
+shap==0.46.0
+lime==0.2.0.1
+matplotlib==3.9.2
+joblib==1.4.2
+streamlit==1.39.0
