@@ -72,3 +72,10 @@ MODEL_PATH = MODELS_DIR / "xgboost_model.joblib"
 PREPROCESSOR_PATH = MODELS_DIR / "preprocessor.joblib"
 METADATA_PATH = MODELS_DIR / "model_metadata.json"
 METRICS_PATH = REPORTS_DIR / "metrics.json"
+
+# --- Explainability (Phase 2) ---------------------------------------
+# SHAP explanations run in probability space so a contribution reads as
+# "this feature added +0.08 to P(default)".
+EXPLAIN_BACKGROUND_SIZE = 200  # training rows used as the SHAP baseline
+SHAP_CACHE_PATH = MODELS_DIR / "shap_values.joblib"
+SHAP_VS_LIME_PATH = REPORTS_DIR / "shap_vs_lime.md"

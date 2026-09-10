@@ -42,7 +42,7 @@ recorded. **See `Phases/Phase 1` for the completion report.**
 
 ---
 
-## Phase 2 — Explainability engine (SHAP + LIME)  ⬜ NEXT
+## Phase 2 — Explainability engine (SHAP + LIME)  ✅ DONE
 
 **Goal:** one reusable module that turns the trained model into explanations —
 consumed unchanged by the Streamlit app in Phase 3.
@@ -72,9 +72,11 @@ Exit criteria: `explain_global()` and `explain_local()` run from a clean shell a
 the Phase 1 artefacts; reason codes read sensibly for a known good and a known bad
 applicant.
 
+**See `Phases/Phase 2` for the completion report.**
+
 ---
 
-## Phase 3 — Streamlit decision app  ⬜
+## Phase 3 — Streamlit decision app  ⬜ NEXT
 
 **Goal:** an interactive front-end a non-technical reviewer could use to score an
 applicant and understand *why*.

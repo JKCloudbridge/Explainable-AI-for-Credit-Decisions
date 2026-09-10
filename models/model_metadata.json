@@ -1,7 +1,7 @@
 {
   "model_type": "XGBClassifier",
   "deployed_model": "xgboost",
-  "trained_at": "2026-09-10T17:52:37+00:00",
+  "trained_at": "2026-09-10T18:01:09+00:00",
   "dataset": "Statlog (German Credit Data) \u2014 UCI id 144",
   "n_samples": 1000,
   "n_train": 800,

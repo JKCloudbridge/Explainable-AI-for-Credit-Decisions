@@ -1,0 +1,167 @@
+# Phase 2 — Explainability engine (SHAP + LIME) — COMPLETION REPORT
+
+**Status:** ✅ complete · pushed to `origin/main`
+**Date:** 2026-09-10
+**Builds on:** Phase 1 artefacts (`models/xgboost_model.joblib`, `preprocessor.joblib`)
+
+---
+
+## What was built
+
+### `src/data.py` — shared split (refactor)
+- Added `get_splits()` → `(df, X_train, X_test, y_train, y_test)`, the canonical
+  stratified 80/20 split (`random_state=42`).
+- `src/train.py` refactored to call it. Re-ran training — `reports/metrics.json`
+  **byte-identical** to Phase 1, so the committed model is unchanged.
+- Explanations and training now use the exact same split, so "explain applicant
+  #N from the test set" is consistent between phases.
+
+### `src/config.py`
+- `EXPLAIN_BACKGROUND_SIZE = 200`, `SHAP_CACHE_PATH = models/shap_values.joblib`,
+  `SHAP_VS_LIME_PATH = reports/shap_vs_lime.md`.
+
+### `src/explain.py` — the engine
+
+**Design decisions**
+- SHAP runs in **probability space** (`model_output="probability"`,
+  `feature_perturbation="interventional"`, 200 training rows as background), so a
+  contribution reads as "raised P(default) by +0.08". Additivity is exact:
+  `base_value + Σ shap == predict_proba`.
+- The preprocessor's 61 one-hot / scaled columns are **summed back into the 20
+  original features** (`_feature_groups()` derived from the fitted
+  `OneHotEncoder.categories_`; `_aggregate()` sums per group). Every explanation
+  therefore has exactly 20 rows in the original feature space.
+- LIME runs on the **original feature space** (not the transformed matrix):
+  categoricals integer-coded with `categorical_names`, a `predict_fn` that decodes
+  back to string rows → preprocessor → model. `discretize_continuous=True`.
+
+**Public API**
+| Function | Returns |
+|---|---|
+| `load_artifacts()` | `(model, preprocessor, metadata)`, `lru_cache`d |
+| `get_explainer()` | SHAP `TreeExplainer`, `lru_cache`d |
+| `shap_for_frame(frame)` | `(agg_shap (n,20), base_value)` |
+| `explain_local(applicant, run_lime=True)` | `{probability, decision, base_value, shap[20], lime[]}` |
+| `reason_codes(applicant, k=4)` | `{decision, probability, reasons[]}` — plain-language adverse factors |
+| `global_importance()` | `pd.Series` mean \|SHAP\| per feature, descending |
+| `compute_and_cache_shap()` | SHAP for all 1,000 rows → `models/shap_values.joblib` |
+| `compare_shap_lime(n=40, top_k=5)` | agreement summary + writes `reports/shap_vs_lime.md` |
+
+**Plots** (`reports/figures/`): `shap_global_importance.png` (top-15 aggregated),
+`shap_beeswarm.png` (true beeswarm on transformed columns), three
+`shap_dependence_<feature>.png` for the top numeric drivers, and
+`local_{approve,deny}_{shap,lime}.png` — custom horizontal-bar
+waterfall/attribution plots (red = toward DENY, green = toward APPROVE).
+
+### Entry point
+`python -m src.explain` → caches SHAP values, writes all global figures, runs one
+clear APPROVE and one clear DENY example (auto-picked as the test-set min/max
+`P(default)`), prints their reason codes, then runs the SHAP-vs-LIME comparison.
+Deterministic across runs.
+
+---
+
+## Results
+
+### Global drivers (mean |SHAP| on P(default))
+
+| Rank | Feature | mean \|SHAP\| |
+|---|---|---|
+| 1 | `checking_status` | 0.111 |
+| 2 | `duration_months` | 0.072 |
+| 3 | `credit_amount` | 0.067 |
+| 4 | `credit_history` | 0.056 |
+| 5 | `savings_status` | 0.052 |
+| 6 | `purpose` | 0.048 |
+| 7 | `employment_since` | 0.032 |
+| 8 | `other_installment_plans` | 0.031 |
+| 9 | `personal_status_sex` | 0.027 |
+| 10 | `installment_rate_pct` | 0.026 |
+
+Matches the German Credit literature: the checking-account status dominates,
+followed by loan size/duration and credit history. `personal_status_sex` sits at
+#9 with a non-trivial 0.027 — flagged for the Phase 4 fairness audit.
+
+### Worked local example — DENY (test-set max risk)
+
+`P(default) = 0.968`, base `0.410`. Top contributions (toward DENY):
+`checking_status = < 0 DM` (+0.121), `credit_history = no credits taken / all paid
+back duly` (+0.098), `duration_months = 48` (+0.074), `property_type = unknown /
+no property` (+0.061). SHAP and LIME share 4 of their top 5 features here.
+
+> Note the counter-intuitive sign on `credit_history`: in this dataset "no credits
+> taken" / "all paid back duly" is associated with *higher* risk than "critical
+> account / other credits existing", because the latter group has a visible
+> repayment track record. Worth calling out in the report — it is a data artefact,
+> not a model bug.
+
+### SHAP vs LIME agreement (40 test applicants, top-5)
+
+| Metric | Value |
+|---|---|
+| Sign agreement (shared features) | **0.97** |
+| Jaccard overlap of top-5 sets | 0.43 ± 0.16 |
+| Spearman rank correlation | 0.37 |
+
+The two methods almost always agree on **which direction** a feature pushes the
+decision; they agree less on exact rank and set membership, which is expected for
+a sparse local linear surrogate vs exact Shapley values. Direction + magnitude of
+the few largest contributions is all the Phase 4 reason-code generator needs, so
+this level of agreement is acceptable. Written up in `reports/shap_vs_lime.md`.
+
+---
+
+## How to reproduce
+
+```bash
+.venv\Scripts\activate
+python -m src.explain          # ~4-5 min (LIME on 40 applicants is the slow part)
+```
+
+Quick local check:
+```python
+from src.explain import explain_local, reason_codes, _pick_examples
+_, deny = _pick_examples()
+print(reason_codes(deny, k=4))
+```
+
+---
+
+## Files
+
+Added:
+```
+src/explain.py
+models/shap_values.joblib          (240 KB — cached SHAP for all 1,000 rows)
+reports/shap_vs_lime.md
+reports/figures/shap_global_importance.png
+reports/figures/shap_beeswarm.png
+reports/figures/shap_dependence_duration_months.png
+reports/figures/shap_dependence_credit_amount.png
+reports/figures/shap_dependence_installment_rate_pct.png
+reports/figures/local_approve_shap.png
+reports/figures/local_approve_lime.png
+reports/figures/local_deny_shap.png
+reports/figures/local_deny_lime.png
+```
+Changed: `src/data.py` (+`get_splits()`), `src/train.py` (uses it),
+`src/config.py` (Phase 2 constants), `README.md` (status + Run Phase 2 section).
+
+## Exit criteria — all met
+
+- [x] `explain_local()` / `reason_codes()` / `global_importance()` run from a clean
+      shell against the Phase 1 artefacts
+- [x] Reason codes read sensibly for a known good and a known bad applicant
+- [x] Global SHAP figures + local SHAP & LIME figures generated
+- [x] One-hot columns aggregated back to the 20 original features
+- [x] SHAP-vs-LIME agreement quantified and written up
+- [x] SHAP values cached so Phase 3 starts instantly
+- [x] Training metrics unchanged after the `get_splits()` refactor
+- [x] Committed and pushed to `origin/main`
+
+## Deferred to later phases
+
+- Any UI → Phase 3 (`explain_local` / `reason_codes` are the app's data source)
+- Turning reason codes into an ECOA / Regulation B adverse-action notice → Phase 4
+- Fairness slicing of the `personal_status_sex` / `age_years` contributions → Phase 4
+- Unit tests → Phase 4

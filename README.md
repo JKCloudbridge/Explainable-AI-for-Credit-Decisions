@@ -16,8 +16,8 @@ decisions under fair-lending rules (ECOA / Regulation B, EU AI Act).
 | Phase | Scope | State |
 |---|---|---|
 | **1. Data & baseline model** | reproducible pipeline, LR vs XGBoost, evaluation, persisted artefacts | ✅ done |
-| 2. Explainability engine | SHAP + LIME module, global & local explanations, reason codes | ⬜ next |
-| 3. Streamlit decision app | scoring, local explanations, what-if sliders, global insights | ⬜ |
+| **2. Explainability engine** | SHAP + LIME module, global & local explanations, reason codes, agreement analysis | ✅ done |
+| 3. Streamlit decision app | scoring, local explanations, what-if sliders, global insights | ⬜ next |
 | 4. Fairness audit + deploy | group fairness metrics, adverse-action codes, model card, Streamlit Cloud | ⬜ |
 
 ---
@@ -63,18 +63,47 @@ Phase 2. On the 200-row test split the two models are within noise of each other
 authors weight a missed bad risk as 5× costlier than a rejected good one, so the
 decision threshold is revisited in Phase 4.
 
+## Run Phase 2
+
+```bash
+python -m src.explain   # SHAP values + global figures + 2 local examples + SHAP-vs-LIME report
+```
+
+`src/explain.py` works in the original 20-feature space (one-hot columns summed
+back to their parent feature) and computes SHAP in **probability space** — a
+contribution of `+0.08` means the feature raised `P(default)` by 0.08.
+
+| Function | Purpose |
+|---|---|
+| `explain_local(applicant)` | score + SHAP contributions + LIME weights for one applicant |
+| `reason_codes(applicant, k)` | the k features pushing hardest toward DENY, in plain language (feeds the Phase 4 adverse-action notice) |
+| `global_importance()` | mean \|SHAP\| per feature |
+| `compare_shap_lime(n)` | SHAP-vs-LIME agreement over a test-set sample → `reports/shap_vs_lime.md` |
+
+Writes: `models/shap_values.joblib` (cached values for all 1,000 rows),
+`reports/shap_vs_lime.md`, and `reports/figures/shap_*.png` +
+`reports/figures/local_{approve,deny}_{shap,lime}.png`.
+
+**Global drivers (mean |SHAP|):** `checking_status` ≫ `duration_months` >
+`credit_amount` > `credit_history` > `savings_status` > `purpose`.
+**SHAP vs LIME:** sign agreement **0.97**, top-5 Jaccard 0.43 — the methods almost
+always agree on *direction*, less so on exact rank.
+
 ## Layout
 
 ```
 src/
   config.py       paths, seed, feature lists, artefact locations
-  data.py         download + decode German Credit; derive target & protected attrs
+  data.py         download + decode German Credit; derive target & protected attrs;
+                  get_splits() — the canonical stratified 80/20 split
   preprocess.py   ColumnTransformer (StandardScaler + dense OneHotEncoder)
   evaluate.py     metrics + ROC / PR / confusion-matrix plots
   train.py        LR vs XGBoost, 5-fold CV, persist model + preprocessor + metrics
+  explain.py      SHAP (TreeExplainer, prob space) + LIME; global/local/reason codes
 data/             dataset notes; raw file downloaded on first run (git-ignored)
-models/           trained artefacts (committed so the app runs without retraining)
-reports/          metrics.json + figures/
+models/           trained artefacts + shap_values.joblib (committed)
+reports/          metrics.json, shap_vs_lime.md, figures/
+Phases/           Plan + one completion report per phase
 ```
 
 ## Notes

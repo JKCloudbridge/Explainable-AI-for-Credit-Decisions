@@ -11,14 +11,17 @@ import ssl
 import urllib.request
 
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 from src.config import (
     CATEGORICAL_FEATURES,
     DATASET_URL,
     FEATURE_COLUMNS,
     NUMERIC_FEATURES,
+    RANDOM_SEED,
     RAW_DATA_FILE,
     TARGET,
+    TEST_SIZE,
 )
 
 # Raw column order in german.data (20 attributes + the class label).
@@ -189,6 +192,21 @@ def load_data() -> pd.DataFrame:
 
     ordered = FEATURE_COLUMNS + [TARGET, "sex", "age_group"]
     return df[ordered]
+
+
+def get_splits():
+    """The canonical stratified 80/20 split, shared by training and explanations.
+
+    Returns ``(df, X_train, X_test, y_train, y_test)`` where ``X_*`` are frames in
+    the original 20-feature space and ``y_*`` are numpy arrays.
+    """
+    df = load_data()
+    X = df[FEATURE_COLUMNS]
+    y = df[TARGET].to_numpy()
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_SEED
+    )
+    return df, X_train, X_test, y_train, y_test
 
 
 def get_codebook() -> dict[str, dict[str, str]]:

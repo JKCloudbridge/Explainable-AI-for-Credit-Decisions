@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 import joblib
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from xgboost import XGBClassifier
 
 from src.config import (
@@ -31,6 +31,7 @@ from src.config import (
     DATASET_NAME,
     DECISION_THRESHOLD,
     FEATURE_COLUMNS,
+    FIGURES_DIR,
     METADATA_PATH,
     METRICS_PATH,
     MODEL_PATH,
@@ -38,12 +39,9 @@ from src.config import (
     PREPROCESSOR_PATH,
     PROTECTED_ATTRIBUTES,
     RANDOM_SEED,
-    REPORTS_DIR,
-    FIGURES_DIR,
     TARGET,
-    TEST_SIZE,
 )
-from src.data import load_data
+from src.data import get_splits
 from src.evaluate import compute_metrics, plot_confusion, plot_pr, plot_roc
 from src.preprocess import build_preprocessor, get_feature_names, transform_frame
 
@@ -72,13 +70,7 @@ def _build_models(scale_pos_weight: float) -> dict[str, object]:
 
 
 def main() -> None:
-    df = load_data()
-    X = df[FEATURE_COLUMNS]
-    y = df[TARGET].to_numpy()
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, stratify=y, random_state=RANDOM_SEED
-    )
+    df, X_train, X_test, y_train, y_test = get_splits()
 
     preprocessor = build_preprocessor()
     X_train_t = transform_frame(preprocessor.fit(X_train), X_train)
