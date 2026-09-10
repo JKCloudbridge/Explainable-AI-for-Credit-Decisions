@@ -1,0 +1,167 @@
+# Phase 1 — Data pipeline & baseline model — COMPLETION REPORT
+
+**Status:** ✅ complete · committed `dcc51e7` · pushed to `origin/main`
+**Date:** 2026-09-10
+
+---
+
+## What was built
+
+### Project scaffold
+- `.gitignore` — ignores `.venv/`, `__pycache__/`, `.env`, and `data/raw/*`
+  (raw dataset is downloaded on demand); `models/` and `reports/` are **kept** so
+  later phases run without retraining.
+- `requirements.txt` — mutually-tested pinned set, Python 3.11:
+  `numpy==1.26.4`, `pandas==2.2.3`, `scipy==1.13.1`, `scikit-learn==1.5.2`,
+  `xgboost==2.1.4`, `shap==0.46.0`, `lime==0.2.0.1`, `matplotlib==3.9.2`,
+  `joblib==1.4.2`, `streamlit==1.39.0`. `numpy` held `< 2` for Streamlit 1.39.
+- `README.md` — overview, status table, setup, run instructions, results, layout.
+- `data/README.md` — dataset provenance, column decoding, derived columns, cost matrix.
+
+### `src/config.py`
+Single source of truth: `RANDOM_SEED = 42`, all paths, `TARGET = "default"`,
+`TEST_SIZE = 0.2`, `DECISION_THRESHOLD = 0.5`, the 7 `NUMERIC_FEATURES`, the 13
+`CATEGORICAL_FEATURES`, `PROTECTED_ATTRIBUTES = ["sex", "age_group", "foreign_worker"]`,
+and artefact paths. Creates `data/raw/`, `models/`, `reports/figures/` on import.
+
+### `src/data.py`
+- `download_raw()` — fetches `german.data` from UCI into `data/raw/` (cached; TLS
+  verification relaxed because UCI's chain is occasionally incomplete on Windows —
+  integrity is checked by asserting the raw shape is exactly `(1000, 21)`).
+- `load_raw()` — reads the space-separated file with proper column names.
+- `load_data()` — decodes every `Axx` code via `VALUE_MAPS` (full UCI data
+  dictionary), then derives:
+  - `default` = 1 where `credit_class == 2` (bad risk), else 0 — **the model target**
+  - `sex` ∈ {`male`, `female`} from `personal_status_sex`
+  - `age_group` ∈ {`age < 25`, `age >= 25`} from `age_years`
+  Returns the 20 features + `default` + `sex` + `age_group` (23 columns).
+- `get_codebook()` — decode maps + numeric-column notes, for the app/report.
+- Runs as `python -m src.data` to fetch + print a summary.
+
+### `src/preprocess.py`
+- `build_preprocessor()` — `ColumnTransformer`:
+  `StandardScaler` on numerics, `OneHotEncoder(handle_unknown="ignore",
+  sparse_output=False)` on categoricals. Dense output on purpose so SHAP's
+  `TreeExplainer` (Phase 2) consumes the matrix directly.
+  `verbose_feature_names_out=False` for readable transformed names.
+- `get_feature_names()` / `transform_frame()` helpers.
+- Transformed matrix: **61 columns**.
+
+### `src/evaluate.py`
+- `compute_metrics(y_true, y_proba, threshold)` → ROC-AUC, PR-AUC (average
+  precision), Brier, accuracy, precision, recall, F1, confusion-matrix counts.
+- `plot_roc()`, `plot_pr()`, `plot_confusion()` — Agg backend, saved as PNG.
+
+### `src/train.py`
+- Stratified 80/20 split (`random_state=42`).
+- Fits the preprocessor on train only.
+- `scale_pos_weight = neg/pos` for XGBoost; `class_weight="balanced"` for LR.
+- Stratified 5-fold CV (ROC-AUC) on the training split for both models.
+- Refits both on full train, evaluates on the hold-out.
+- Deploys **XGBoost** (`XGB_PARAMS`: 300 trees, depth 3, lr 0.05, subsample 0.9,
+  colsample 0.9, `reg_lambda` 1, `min_child_weight` 2).
+- Persists: `models/xgboost_model.joblib`, `models/preprocessor.joblib`,
+  `models/model_metadata.json`, `reports/metrics.json`,
+  `reports/figures/{roc_curve,pr_curve,confusion_matrix}.png`.
+
+---
+
+## Results — hold-out test set (n = 200, threshold 0.5)
+
+| Model | CV ROC-AUC (train) | Test ROC-AUC | Test PR-AUC | Recall | Precision | Brier |
+|---|---|---|---|---|---|---|
+| LogisticRegression | 0.769 ± 0.053 | 0.806 | 0.633 | 0.80 | 0.56 | 0.182 |
+| **XGBoost** (deployed) | **0.790 ± 0.035** | 0.784 | 0.619 | 0.70 | 0.55 | 0.180 |
+
+XGBoost confusion matrix @ 0.5: TN 106, FP 34, FN 18, TP 42.
+
+**Why XGBoost is deployed despite LR's slightly higher test AUC:** its
+cross-validated AUC is higher *and* lower-variance (±0.035 vs ±0.053); the 200-row
+test split is small enough that the two models are within noise. XGBoost's tree
+structure also lets SHAP's `TreeExplainer` produce **exact** Shapley values in
+Phase 2. `recall` here = the share of true defaulters the bank would have denied.
+
+---
+
+## Design decisions (carried into later phases)
+
+1. **All 20 attributes are model inputs, including `personal_status_sex` and
+   `age_years`.** Deliberate — Phase 4 audits the resulting disparities by `sex` /
+   `age_group` / `foreign_worker` and compares against a protected-attribute-free
+   retrain.
+2. **Target orientation:** `default = 1` means *bad risk*; the model predicts
+   `P(default)`; "deny" = `P(default) ≥ threshold`.
+3. **Threshold = 0.5 for now.** The dataset authors weight a missed bad risk as
+   **5×** costlier than a rejected good risk — the cost-optimal threshold is
+   computed in Phase 4.
+4. **Artefacts are committed.** `models/` + `reports/` are in git so Phases 2–4
+   never need to retrain; only `data/raw/` is ignored.
+5. **Project-local `.venv`.** Installing `shap` into the global interpreter pulled
+   in numpy 2 / pandas 3 and broke Streamlit; the global env was reverted and this
+   project isolated in `.venv`.
+
+---
+
+## How to reproduce
+
+```bash
+cd "C:\Users\hemin\Desktop\Projects College\Medium\Explainable AI for Credit decisions"
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python -m src.data      # downloads + caches german.data, prints summary
+python -m src.train     # trains, evaluates, writes models/ + reports/
+```
+
+Reload check (used to verify persistence):
+```python
+import joblib
+from src.config import MODEL_PATH, PREPROCESSOR_PATH, FEATURE_COLUMNS
+from src.data import load_data
+m = joblib.load(MODEL_PATH); pre = joblib.load(PREPROCESSOR_PATH)
+df = load_data().head(5)
+print(m.predict_proba(pre.transform(df[FEATURE_COLUMNS]))[:, 1])
+# -> [0.016 0.664 0.046 0.405 0.931]  (actual: [0, 1, 0, 0, 1])
+```
+
+---
+
+## Files added
+
+```
+.gitignore
+README.md
+requirements.txt
+data/README.md
+data/raw/.gitkeep
+src/__init__.py
+src/config.py
+src/data.py
+src/preprocess.py
+src/evaluate.py
+src/train.py
+models/xgboost_model.joblib        (332 KB)
+models/preprocessor.joblib         (12 KB)
+models/model_metadata.json
+reports/metrics.json
+reports/figures/roc_curve.png
+reports/figures/pr_curve.png
+reports/figures/confusion_matrix.png
+```
+
+## Exit criteria — all met
+
+- [x] `python -m src.data` downloads + decodes the dataset, shape asserted `(1000, 21)`
+- [x] `python -m src.train` runs clean end to end
+- [x] Both models cross-validated; deployed model chosen with a stated rationale
+- [x] Model + preprocessor persisted and verified to reload and predict
+- [x] Metrics + 3 diagnostic figures written to `reports/`
+- [x] README status table + this report written
+- [x] Committed (`dcc51e7`) and pushed to `origin/main`
+
+## Not in scope for Phase 1 (deferred)
+
+- SHAP / LIME explanations → Phase 2
+- Any UI → Phase 3
+- Fairness metrics, adverse-action notices, threshold tuning, deployment → Phase 4
+- Unit tests → Phase 4 ("final cleanup")

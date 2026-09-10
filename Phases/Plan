@@ -1,0 +1,146 @@
+# M3 — Explainable AI for Credit / Loan Decisions — Phase Plan
+
+**Tier:** Medium → 4 phases, one phase per working session.
+Each phase ends with: build → verify → commit → push.
+
+- **Project root:** `C:\Users\hemin\Desktop\Projects College\Medium\Explainable AI for Credit decisions`
+- **Repo:** https://github.com/JKCloudbridge/Explainable-AI-for-Credit-Decisions (branch `main`)
+- **Stack:** scikit-learn + XGBoost · SHAP + LIME · Streamlit
+- **Dataset:** Statlog (German Credit Data), UCI id 144 — 1,000 applicants, 20 attributes,
+  30% default rate. Auto-downloaded by `src/data.py` into `data/raw/` (git-ignored).
+- **Environment:** project-local `.venv`; `requirements.txt` pins `numpy < 2` (Streamlit 1.39).
+
+**Report angle (from the topic shortlist):** global vs local explanations, fairness
+metrics, regulatory framing (ECOA / Regulation B adverse-action notices, EU AI Act
+high-risk classification).
+
+---
+
+## Phase 1 — Data pipeline & baseline model  ✅ DONE
+
+**Goal:** a reproducible path from raw dataset to a persisted, evaluated classifier.
+
+Scope:
+- Project scaffold, pinned `requirements.txt`, `.gitignore`, README, dataset notes.
+- `src/config.py` — single source of truth for paths, seed, feature lists, artefact locations.
+- `src/data.py` — download + cache `german.data`; rename columns; decode every `Axx`
+  code to a human-readable label; derive the `default` target and the `sex` / `age_group`
+  protected attributes used later by the fairness audit.
+- `src/preprocess.py` — `ColumnTransformer`: `StandardScaler` on 7 numeric columns,
+  dense `OneHotEncoder` on 13 categoricals (dense so SHAP's TreeExplainer can consume it).
+- `src/train.py` — `LogisticRegression` vs `XGBoost`, stratified 5-fold CV on the
+  training split, refit on full train, evaluate on a 20% hold-out. Persist the model,
+  the preprocessor, `model_metadata.json`, `reports/metrics.json`, and 3 diagnostic figures.
+- `src/evaluate.py` — threshold-free metrics (ROC-AUC, PR-AUC, Brier) + thresholded
+  metrics (precision, recall, F1, confusion matrix) + ROC / PR / confusion-matrix plots.
+
+Deliverables: `models/xgboost_model.joblib`, `models/preprocessor.joblib`,
+`models/model_metadata.json`, `reports/metrics.json`, `reports/figures/*.png`.
+
+Exit criteria: `python -m src.train` runs clean; artefacts reload and predict; metrics
+recorded. **See `Phases/Phase 1` for the completion report.**
+
+---
+
+## Phase 2 — Explainability engine (SHAP + LIME)  ⬜ NEXT
+
+**Goal:** one reusable module that turns the trained model into explanations —
+consumed unchanged by the Streamlit app in Phase 3.
+
+Scope:
+- `src/explain.py`:
+  - `get_explainer()` — cached SHAP `TreeExplainer` over the XGBoost model + a
+    background sample from the training set.
+  - `explain_global()` — SHAP beeswarm (summary), mean-|SHAP| feature-importance bar,
+    dependence plots for the top drivers. Save to `reports/figures/`.
+  - `explain_local(applicant)` — SHAP waterfall for a single applicant **and** a LIME
+    tabular explanation, returned as structured data (feature, value, contribution,
+    direction) plus figures.
+  - `reason_codes(applicant, k=4)` — the k features pushing the decision toward
+    "deny", in plain language (precursor to the Phase 4 adverse-action notice).
+- `src/explain_compare.py` (or a function in `explain.py`) — agreement between SHAP
+  and LIME on local explanations: rank correlation of top features, sign agreement,
+  a short written summary in `reports/shap_vs_lime.md`.
+- Aggregate SHAP values cached to `models/shap_values.joblib` (or recomputed — cheap
+  for 1,000 rows) so the app starts fast.
+- One `notebooks/` or `scripts/` entry point that regenerates every explanation figure.
+
+Deliverables: `src/explain.py`, SHAP global figures, one worked local example,
+`reports/shap_vs_lime.md`.
+
+Exit criteria: `explain_global()` and `explain_local()` run from a clean shell against
+the Phase 1 artefacts; reason codes read sensibly for a known good and a known bad
+applicant.
+
+---
+
+## Phase 3 — Streamlit decision app  ⬜
+
+**Goal:** an interactive front-end a non-technical reviewer could use to score an
+applicant and understand *why*.
+
+Scope:
+- `app/` (or `streamlit_app.py`) multi-page app:
+  1. **Score an applicant** — form with every attribute (sensible defaults / decoded
+     dropdowns), or "load applicant #N from the test set". Shows P(default), the
+     approve/deny decision, and a threshold slider (default 0.5) that updates the
+     decision live.
+  2. **Why this decision** — SHAP waterfall + LIME bar for the current applicant,
+     plus the plain-language reason codes from Phase 2.
+  3. **What-if** — sliders / dropdowns for the most influential features; re-scores on
+     every change and shows the delta vs the original applicant ("raise savings to
+     ≥ 1000 DM → P(default) 0.62 → 0.48").
+  4. **Global model insights** — the Phase 2 SHAP summary + importance + dependence
+     plots with short captions.
+- Shared model-loading helper with `st.cache_resource`; all inputs flow through the
+  Phase 1 preprocessor so the app and training stay consistent.
+- `.streamlit/config.toml` for theme; screenshots into `reports/figures/`.
+
+Deliverables: runnable `streamlit run` app, screenshots, README run section.
+
+Exit criteria: app launches from the venv; scoring + explanations + what-if all work
+for arbitrary applicants; no retraining needed.
+
+---
+
+## Phase 4 — Fairness audit, regulatory framing, deploy  ⬜
+
+**Goal:** the "explainable + responsible" story that carries the report, plus a
+public deployment.
+
+Scope:
+- `src/fairness.py` — group metrics by `sex`, `age_group`, `foreign_worker`:
+  selection rate / demographic parity difference, equal-opportunity (TPR) gap,
+  false-positive-rate gap, disparate-impact ratio (4/5ths rule), per-group
+  calibration and AUC. Output a table + bar charts.
+- **Protected-attribute-free variant** — retrain without `personal_status_sex`
+  (and optionally `age_years`); compare accuracy vs fairness (does proxy
+  discrimination persist through `job`, `credit_amount`, …?).
+- Threshold revisited under the dataset's 5:1 cost matrix (missed bad risk vs
+  rejected good risk); show the cost-optimal threshold and its fairness impact.
+- **Fairness page** added to the Streamlit app.
+- `src/adverse_action.py` — ECOA / Regulation B style adverse-action notice
+  generated from the applicant's top negative SHAP features (principal reasons).
+- `MODEL_CARD.md` — intended use, data, metrics, fairness findings, limitations.
+- `reports/report_notes.md` — global vs local explanations, fairness metrics,
+  regulatory framing, written up for the dissertation.
+- Deploy to Streamlit Community Cloud; pin `requirements.txt`; add the live URL and
+  screenshots to the README.
+- `tests/` — smoke tests for `data`, `preprocess`, `explain`, `fairness`; final cleanup.
+
+Deliverables: `src/fairness.py`, `src/adverse_action.py`, fairness figures,
+`MODEL_CARD.md`, `reports/report_notes.md`, deployed app URL, `tests/`.
+
+Exit criteria: fairness table + charts reproducible; adverse-action notice generates
+for any denied applicant; app deployed and reachable; tests pass.
+
+---
+
+## Conventions
+
+- Work inside `.venv`: `.venv\Scripts\activate` then `pip install -r requirements.txt`.
+- Every module imports paths / feature lists from `src/config.py` — never hard-code.
+- Trained artefacts (`models/`, `reports/`) are committed so each phase builds on the
+  last without retraining; only `data/raw/` is git-ignored.
+- One commit per phase, message prefixed `Phase N:`, pushed to `origin/main`.
+- After each phase: update the README status table and add a `Phases/Phase N` report.
