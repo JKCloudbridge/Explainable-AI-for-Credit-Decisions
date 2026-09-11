@@ -1,0 +1,113 @@
+{
+  "threshold": 0.5,
+  "tables": {
+    "sex": [
+      {
+        "group": "female",
+        "n": 310,
+        "actual_default_rate": 0.35161290322580646,
+        "approval_rate": 0.5774193548387097,
+        "tpr_deny_given_default": 0.8807339449541285,
+        "fpr_deny_given_repaid": 0.17412935323383086,
+        "auc": 0.9280660915605459,
+        "calibration_gap": 0.09847583616933514,
+        "disparate_impact_ratio_vs_max": 0.8834132036335026
+      },
+      {
+        "group": "male",
+        "n": 690,
+        "actual_default_rate": 0.2768115942028985,
+        "approval_rate": 0.653623188405797,
+        "tpr_deny_given_default": 0.900523560209424,
+        "fpr_deny_given_repaid": 0.1342685370741483,
+        "auc": 0.9424608379061788,
+        "calibration_gap": 0.09172791795454166,
+        "disparate_impact_ratio_vs_max": 1.0
+      }
+    ],
+    "age_group": [
+      {
+        "group": "age < 25",
+        "n": 149,
+        "actual_default_rate": 0.40939597315436244,
+        "approval_rate": 0.5033557046979866,
+        "tpr_deny_given_default": 0.8524590163934426,
+        "fpr_deny_given_repaid": 0.25,
+        "auc": 0.8846870342771982,
+        "calibration_gap": 0.09386952691430211,
+        "disparate_impact_ratio_vs_max": 0.7718120805369129
+      },
+      {
+        "group": "age >= 25",
+        "n": 851,
+        "actual_default_rate": 0.2808460634547591,
+        "approval_rate": 0.6521739130434783,
+        "tpr_deny_given_default": 0.9037656903765691,
+        "fpr_deny_given_repaid": 0.13071895424836602,
+        "auc": 0.9465775152459868,
+        "calibration_gap": 0.09381112043081524,
+        "disparate_impact_ratio_vs_max": 1.0
+      }
+    ],
+    "foreign_worker": [
+      {
+        "group": "no",
+        "n": 37,
+        "actual_default_rate": 0.10810810810810811,
+        "approval_rate": 0.8648648648648649,
+        "tpr_deny_given_default": 1.0,
+        "fpr_deny_given_repaid": 0.030303030303030304,
+        "auc": 1.0,
+        "calibration_gap": 0.07082542293780558,
+        "disparate_impact_ratio_vs_max": 1.0
+      },
+      {
+        "group": "yes",
+        "n": 963,
+        "actual_default_rate": 0.3073727933541018,
+        "approval_rate": 0.620976116303219,
+        "tpr_deny_given_default": 0.8918918918918919,
+        "fpr_deny_given_repaid": 0.15142428785607195,
+        "auc": 0.9357905506706107,
+        "calibration_gap": 0.09470324238388955,
+        "disparate_impact_ratio_vs_max": 0.718003634475597
+      }
+    ]
+  },
+  "cost_sweep": {
+    "cost_fn": 5.0,
+    "cost_fp": 1.0,
+    "best_threshold": 0.29000000000000004,
+    "best_cost": 107.0,
+    "default_threshold": 0.5,
+    "default_cost": 124.0,
+    "cost_reduction_pct": 0.13709677419354838
+  },
+  "aware_vs_unaware": {
+    "threshold": 0.5,
+    "dropped_features": [
+      "personal_status_sex",
+      "age_years"
+    ],
+    "variants": {
+      "aware (all 20 features)": {
+        "test_auc": 0.7844047619047618,
+        "sex_approval_gap": 0.07620383356708738,
+        "sex_min_disparate_impact_ratio": 0.8834132036335026,
+        "age_group_approval_gap": 0.14881820834549164,
+        "age_group_min_disparate_impact_ratio": 0.7718120805369129,
+        "foreign_worker_approval_gap": 0.24388874856164589,
+        "foreign_worker_min_disparate_impact_ratio": 0.718003634475597
+      },
+      "unaware (drops personal_status_sex, age_years)": {
+        "test_auc": 0.795952380952381,
+        "sex_approval_gap": 0.07330528284244975,
+        "sex_min_disparate_impact_ratio": 0.8873482290394424,
+        "age_group_approval_gap": 0.14646803208227188,
+        "age_group_min_disparate_impact_ratio": 0.7746034443001566,
+        "foreign_worker_approval_gap": 0.24596559175998434,
+        "foreign_worker_min_disparate_impact_ratio": 0.7156022845275182
+      }
+    }
+  }
+}

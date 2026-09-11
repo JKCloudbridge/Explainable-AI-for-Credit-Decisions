@@ -251,18 +251,23 @@ def lime_local(applicant: pd.Series, num_features: int = 10, num_samples: int = 
 # =====================================================================
 # Local explanation (SHAP + LIME together) and reason codes
 # =====================================================================
-def explain_local(applicant, run_lime: bool = True) -> dict:
+def explain_local(applicant, run_lime: bool = True, threshold: float | None = None) -> dict:
     """Score one applicant and explain the decision with SHAP (+ optionally LIME).
 
-    ``applicant`` is a dict / Series in the original 20-feature space.
+    ``applicant`` is a dict / Series in the original 20-feature space. ``threshold``
+    defaults to ``DECISION_THRESHOLD`` — callers that let the user pick a threshold
+    (the Streamlit app, ``reason_codes``, the Phase 4 adverse-action notice) must
+    pass it through explicitly so the reported decision matches what's shown
+    elsewhere for the same applicant.
     """
+    threshold = DECISION_THRESHOLD if threshold is None else threshold
     model, preprocessor, _ = load_artifacts()
     if isinstance(applicant, dict):
         applicant = pd.Series(applicant)
     frame = pd.DataFrame([applicant])[FEATURE_COLUMNS]
 
     proba = float(model.predict_proba(preprocessor.transform(frame))[0, 1])
-    decision = "DENY" if proba >= DECISION_THRESHOLD else "APPROVE"
+    decision = "DENY" if proba >= threshold else "APPROVE"
 
     agg, base = shap_for_frame(frame)
     contribs = pd.DataFrame(
@@ -279,7 +284,7 @@ def explain_local(applicant, run_lime: bool = True) -> dict:
     result = {
         "probability": proba,
         "decision": decision,
-        "threshold": DECISION_THRESHOLD,
+        "threshold": threshold,
         "base_value": base,
         "shap": contribs.to_dict("records"),
     }
@@ -288,12 +293,12 @@ def explain_local(applicant, run_lime: bool = True) -> dict:
     return result
 
 
-def reason_codes(applicant, k: int = 4) -> dict:
+def reason_codes(applicant, k: int = 4, threshold: float | None = None) -> dict:
     """The k features that pushed the decision most toward DENY, in plain words.
 
     Precursor to the ECOA / Regulation B adverse-action notice built in Phase 4.
     """
-    res = explain_local(applicant, run_lime=False)
+    res = explain_local(applicant, run_lime=False, threshold=threshold)
     adverse = [c for c in res["shap"] if c["shap"] > 0][:k]
     reasons = []
     for c in adverse:

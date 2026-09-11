@@ -1,5 +1,9 @@
 # M3 — Explainable AI for Credit / Loan Decisions — Phase Plan
 
+**STATUS: all 4 phases complete.** See `Phases/Phase 1` through `Phases/Phase 4`
+for completion reports, `README.md` for the current state, `MODEL_CARD.md` and
+`reports/report_notes.md` for the report-ready write-up.
+
 **Tier:** Medium → 4 phases, one phase per working session.
 Each phase ends with: build → verify → commit → push.
 
@@ -107,7 +111,7 @@ for arbitrary applicants; no retraining needed.
 
 ---
 
-## Phase 4 — Fairness audit, regulatory framing, deploy  ⬜ NEXT
+## Phase 4 — Fairness audit, regulatory framing, deploy  ✅ DONE
 
 **Goal:** the "explainable + responsible" story that carries the report, plus a
 public deployment.

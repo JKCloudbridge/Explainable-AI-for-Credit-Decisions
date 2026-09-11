@@ -1,0 +1,208 @@
+# Phase 4 — Fairness audit, regulatory framing, deploy — COMPLETION REPORT
+
+**Status:** ✅ complete · pushed to `origin/main`
+**Date:** 2026-09-11
+**Builds on:** Phases 1-3 (model, `explain.py`, the Streamlit app)
+
+This is the **final phase** of the 4-phase plan. All exit criteria across all
+four phases are now met.
+
+---
+
+## What was built
+
+### `src/fairness.py` — the group audit
+- `group_metrics(y_true, proba, groups, threshold)` — per-group `n`,
+  `actual_default_rate`, `approval_rate`, `tpr_deny_given_default` (recall for
+  catching true defaulters), `fpr_deny_given_repaid` (rate of wrongly denying
+  genuinely creditworthy applicants — the more consequential fairness harm),
+  `auc`, `calibration_gap`, and `disparate_impact_ratio_vs_max` (the EEOC
+  four-fifths-rule ratio against the most-favoured group).
+- `run_fairness_audit(threshold)` — the three tables (`sex`, `age_group`,
+  `foreign_worker`), computed on the **full 1,000-row dataset** rather than
+  just the 200-row hold-out, because `foreign_worker = no` is only 37 rows
+  overall and 6 in the test split — too small for a stable held-out-only
+  estimate. Documented as a demonstration-audit tradeoff, not a methodological
+  ideal, in the module docstring and the report.
+- `cost_optimal_threshold()` — sweeps thresholds on the **200-row hold-out**
+  against German Credit's documented cost matrix (missed bad risk = 5x a
+  wrongly denied good risk).
+- `train_unaware_variant()` / `compare_aware_vs_unaware()` — a second XGBoost
+  model trained on the identical split minus `personal_status_sex` and
+  `age_years`, compared on test-set AUC and full-dataset fairness gaps.
+- `build_preprocessor()` (in `src/preprocess.py`) was generalised to accept
+  custom `numeric_features`/`categorical_features` lists (default unchanged)
+  so the unaware variant reuses the exact same preprocessing logic as Phase 1.
+
+### `src/adverse_action.py`
+`generate_notice(applicant, threshold=...)` — reuses Phase 2's `reason_codes()`
+(now threshold-aware, see below) to produce an ECOA/Regulation-B-style
+statement of reasons, clearly labelled as a capstone demonstration, not a real
+institution's notice.
+
+### Consistency fix carried into Phases 2-3
+While building the notice generator I found that `explain_local()` and
+`reason_codes()` used the hardcoded config `DECISION_THRESHOLD`, ignoring
+whatever threshold the user set on the Streamlit app's Score page — so
+"Why this decision" (page 2) could disagree with the decision shown on page 1
+if the user had moved the slider. Both functions now take an explicit
+`threshold` parameter (default unchanged, so Phase 2's CLI behaviour and
+existing tests are unaffected); page 2 and the new adverse-action expander
+pass `st.session_state.threshold` through.
+
+### Streamlit app — page 5 + page 2 addition
+- **`pages/5_Fairness_Audit.py`** — the three group tables at the app's live
+  threshold, with a four-fifths-rule pass/fail badge and a small-group warning;
+  approval-rate and wrongly-denied-rate bar charts; the cost-optimal-threshold
+  sweep with the user's current threshold marked on the curve; the
+  aware-vs-unaware comparison table.
+- **`pages/2_Why_This_Decision.py`** — added an expander, shown only when the
+  decision is DENY, that renders `generate_notice()`'s output via `st.code`.
+- `src/fairness.py` gained a `group_bar_figure()` (returns a `Figure`, reused
+  live by the app) alongside the existing save-to-disk `plot_group_bar()` —
+  the same figure-builder/save-wrapper split used for `explain.py` in Phase 3.
+
+### `MODEL_CARD.md`
+Model details, intended use (explicitly: not for real decisions), training
+data, evaluation table, explainability summary, the fairness table with
+pass/fail per attribute, the aware-vs-unaware finding, ethical considerations,
+limitations, and recommendations for anyone extending the project.
+
+### `reports/report_notes.md`
+The dissertation-facing write-up the topic's "report angle" calls for: global
+vs local explanations (including the counter-intuitive `credit_history` sign,
+worth flagging explicitly), the SHAP-vs-LIME agreement numbers, the fairness
+findings with an honest discussion of which one (`age_group`) is more
+defensible than the other (`foreign_worker`, n=37 caveat), the
+cost-optimal-threshold / fairness interaction, and a regulatory framing section
+(ECOA/Reg B, disparate impact doctrine, EU AI Act Annex III high-risk
+classification, model cards as a documentation obligation).
+
+### Tests
+`requirements-dev.txt` (pytest, not needed for the app itself) +
+`tests/{test_data,test_preprocess,test_explain,test_fairness,test_adverse_action}.py`
+— **21 tests**, all passing:
+- `test_data.py` — shape, decoded categoricals (no leftover `Axx` codes), the
+  derived protected attributes, and that `get_splits()` is stratified and
+  reproducible.
+- `test_preprocess.py` — default and restricted-feature-list preprocessing
+  shapes; the persisted Phase 1 model produces valid, non-degenerate
+  probabilities.
+- `test_explain.py` — **SHAP additivity** (`base_value + Σcontributions ==
+  predict_proba`, to 1e-6), that `explain_local`'s decision actually respects
+  the `threshold` argument, LIME runs and returns well-formed output,
+  `reason_codes` only lists adverse (positive-SHAP) features, and
+  `global_importance` is sorted with `checking_status` on top.
+- `test_fairness.py` — `group_metrics` invariants on synthetic data (ratios
+  bounded, max group ratio = 1.0), the real audit covers all three protected
+  attributes and sums to 1,000 rows, the cost sweep lands in (0, 1) and beats
+  the default threshold's cost, and the aware/unaware comparison returns both
+  variants with sane AUC and ratio ranges.
+- `test_adverse_action.py` — a denial gets a reasons section, an approval does
+  not, and the notice's decision follows the `threshold` argument.
+
+One test-writing mistake worth recording: I first asserted a confidently
+*approved* applicant would have an **empty** reasons list. It doesn't — even a
+0.7%-P(default) applicant has a few small positive-SHAP features (Phase 2 had
+already shown this for the "APPROVE example"). Fixed the test to check the
+notice has no "Principal reason" section instead of asserting emptiness — the
+original assumption was wrong, not the code.
+
+### Deployment prep
+- `.python-version` (`3.11`) for Streamlit Community Cloud's Python selection.
+- `requirements.txt` gained `tabulate==0.9.0` (needed by
+  `DataFrame.to_markdown()` in the fairness report writer) — installed and
+  verified in the venv.
+- README gained a step-by-step Streamlit Community Cloud deploy section.
+  **Actually clicking "Deploy" requires GitHub OAuth in a browser, which this
+  session cannot do** — the repo, `streamlit_app.py` at root, pinned
+  `requirements.txt`, and `.python-version` are all in place, so deployment is
+  a five-minute manual step once the user is ready; the README says exactly
+  what to click.
+
+---
+
+## Key findings (see `MODEL_CARD.md` / `reports/fairness_report.md` for full tables)
+
+- **Disparate impact:** `sex` passes the four-fifths rule (min ratio 0.88);
+  `age_group` (0.77) and `foreign_worker` (0.72) fail it. The
+  `foreign_worker = no` group is only 37 of 1,000 applicants — reported with
+  that caveat, not as a standalone headline.
+- **Protected-attribute-free model:** dropping `personal_status_sex` +
+  `age_years` does not cost test AUC (+0.012, within noise) and barely narrows
+  the fairness gaps — proxy features carry the signal. This is the project's
+  central fairness argument: unawareness is not fairness.
+- **Cost-optimal threshold:** 0.29 vs the default 0.5 (14% lower cost under
+  the dataset's 5:1 cost matrix) — flagged as widening approval-rate gaps if
+  adopted without re-auditing.
+
+---
+
+## Verification
+
+- `pytest` — 21/21 passing (`pytest.ini` filters third-party deprecation noise).
+- `streamlit.testing.v1.AppTest` — all 6 scripts (Home + 5 pages) execute with
+  zero exceptions, including page 5 at both the default (0.5) and cost-optimal
+  (0.29) thresholds, and page 2's new adverse-action expander with a known
+  DENY applicant forced into session state.
+- `python -m src.fairness` and `python -m src.adverse_action` both run clean
+  end to end and their console output matches the persisted
+  `reports/fairness_metrics.json` / `reports/fairness_report.md`.
+- Re-ran Phase 1's `python -m src.train` was **not** needed — no change to the
+  main model or its training data in this phase.
+
+---
+
+## Files
+
+Added:
+```
+src/fairness.py
+src/adverse_action.py
+pages/5_Fairness_Audit.py
+tests/__init__.py
+tests/test_data.py
+tests/test_preprocess.py
+tests/test_explain.py
+tests/test_fairness.py
+tests/test_adverse_action.py
+requirements-dev.txt
+pytest.ini
+.python-version
+MODEL_CARD.md
+reports/report_notes.md
+reports/fairness_report.md
+reports/fairness_metrics.json
+reports/figures/fairness_*.png (8 figures)
+models/xgboost_model_unaware.joblib
+models/preprocessor_unaware.joblib
+```
+Changed: `src/preprocess.py` (`build_preprocessor` accepts custom feature
+lists), `src/explain.py` (`explain_local`/`reason_codes` gain a `threshold`
+param), `pages/2_Why_This_Decision.py` (threshold passed through + adverse-action
+expander), `requirements.txt` (+tabulate), `README.md` (status, page table,
+Run Phase 4, deploy instructions, layout).
+
+## Exit criteria — all met
+
+- [x] Group fairness metrics computed for `sex`, `age_group`, `foreign_worker`
+      (demographic parity via approval rate, equal opportunity via
+      `tpr_deny_given_default`, disparate impact ratio, calibration)
+- [x] Protected-attribute-free variant trained and compared (accuracy + fairness)
+- [x] Decision threshold revisited under the dataset's cost matrix
+- [x] Fairness page added to the Streamlit app, live at the user's threshold
+- [x] ECOA / Regulation B adverse-action notice generated from SHAP reason codes
+- [x] `MODEL_CARD.md` written
+- [x] `reports/report_notes.md` written (global vs local, fairness, regulatory framing)
+- [x] Deployment prerequisites in place + documented; live deploy left as a
+      manual GitHub-OAuth step for the user
+- [x] `tests/` added — 21 smoke tests across data/preprocess/explain/fairness/adverse_action, all passing
+- [x] Committed and pushed to `origin/main`
+
+## Project status
+
+All 4 planned phases for M3 are complete. Remaining optional follow-ups (not
+blocking, not planned as a Phase 5): actually clicking Deploy on Streamlit
+Community Cloud and adding the live URL to the README; capturing browser
+screenshots of the running app (no headless-browser tool was available in any
+session so far).

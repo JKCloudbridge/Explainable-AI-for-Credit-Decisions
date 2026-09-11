@@ -1,0 +1,4 @@
+# Dev-only — not needed to run the app or Streamlit Cloud deploy.
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   pytest
+pytest==8.3.3

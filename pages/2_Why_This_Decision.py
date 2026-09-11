@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import streamlit as st
 
 from app_lib.common import ensure_state
+from src.adverse_action import generate_notice
 from src.explain import explain_local, local_lime_figure, local_shap_figure, reason_codes
 
 st.set_page_config(page_title="Why This Decision", page_icon="\U0001F50D", layout="wide")
@@ -18,7 +19,9 @@ st.title("\U0001F50D Why this decision")
 st.caption(f"Applicant: {st.session_state.applicant_source}")
 
 with st.spinner("Computing SHAP + LIME explanation ..."):
-    result = explain_local(st.session_state.applicant, run_lime=True)
+    result = explain_local(
+        st.session_state.applicant, run_lime=True, threshold=st.session_state.threshold
+    )
 
 badge = "\U0001F534 DENY" if result["decision"] == "DENY" else "\U0001F7E2 APPROVE"
 c1, c2, c3 = st.columns(3)
@@ -43,7 +46,7 @@ with right:
 
 st.divider()
 st.subheader("Reason codes")
-rc = reason_codes(st.session_state.applicant, k=4)
+rc = reason_codes(st.session_state.applicant, k=4, threshold=st.session_state.threshold)
 if rc["reasons"]:
     st.markdown("Top factors pushing this application toward **denial**:")
     for r in rc["reasons"]:
@@ -56,3 +59,18 @@ st.caption(
     "*direction* of a feature's effect 97% of the time (see `reports/shap_vs_lime.md`); "
     "expect some disagreement on exact ranking — that's why both are shown above."
 )
+
+if rc["decision"] == "DENY":
+    st.divider()
+    with st.expander("\U0001F4C4 Generate adverse-action notice (ECOA / Regulation B — demonstration)"):
+        st.caption(
+            "A capstone demonstration, not a real notice from a real institution. Regulation B "
+            "requires a creditor to state the specific, principal reasons for a denial."
+        )
+        notice = generate_notice(
+            st.session_state.applicant,
+            applicant_ref=st.session_state.applicant_source,
+            threshold=st.session_state.threshold,
+        )
+        st.code(notice["body"], language=None)
+
