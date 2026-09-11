@@ -76,7 +76,7 @@ applicant.
 
 ---
 
-## Phase 3 — Streamlit decision app  ⬜ NEXT
+## Phase 3 — Streamlit decision app  ✅ DONE
 
 **Goal:** an interactive front-end a non-technical reviewer could use to score an
 applicant and understand *why*.
@@ -103,9 +103,11 @@ Deliverables: runnable `streamlit run` app, screenshots, README run section.
 Exit criteria: app launches from the venv; scoring + explanations + what-if all work
 for arbitrary applicants; no retraining needed.
 
+**See `Phases/Phase 3` for the completion report.**
+
 ---
 
-## Phase 4 — Fairness audit, regulatory framing, deploy  ⬜
+## Phase 4 — Fairness audit, regulatory framing, deploy  ⬜ NEXT
 
 **Goal:** the "explainable + responsible" story that carries the report, plus a
 public deployment.

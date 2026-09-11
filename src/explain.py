@@ -373,7 +373,8 @@ def _plot_dependence(feature: str, path) -> None:
     plt.close(fig)
 
 
-def _plot_local(result: dict, title: str, path) -> None:
+def local_shap_figure(result: dict, title: str = ""):
+    """Horizontal SHAP contribution chart for one applicant (used by the app too)."""
     rows = result["shap"][:12][::-1]
     labels = [f"{r['feature']} = {_fmt_value(r['value'])}" for r in rows]
     vals = [r["shap"] for r in rows]
@@ -382,16 +383,17 @@ def _plot_local(result: dict, title: str, path) -> None:
     ax.barh(labels, vals, color=colors)
     ax.axvline(0, color="black", lw=0.8)
     ax.set_xlabel("SHAP contribution to P(default)   (red = toward DENY)")
+    prefix = f"{title}\n" if title else ""
     ax.set_title(
-        f"{title}\nbase {result['base_value']:.3f}  ->  "
+        f"{prefix}base {result['base_value']:.3f}  ->  "
         f"P(default) {result['probability']:.3f}  ->  {result['decision']}"
     )
     fig.tight_layout()
-    fig.savefig(path, dpi=130)
-    plt.close(fig)
+    return fig
 
 
-def _plot_lime(result: dict, title: str, path) -> None:
+def local_lime_figure(result: dict, title: str = "LIME - local surrogate"):
+    """Horizontal LIME weight chart for one applicant (used by the app too)."""
     rows = result["lime"][:10][::-1]
     labels = [r["condition"] for r in rows]
     vals = [r["weight"] for r in rows]
@@ -402,6 +404,17 @@ def _plot_lime(result: dict, title: str, path) -> None:
     ax.set_xlabel("LIME weight for class 'default'   (red = toward DENY)")
     ax.set_title(title)
     fig.tight_layout()
+    return fig
+
+
+def _plot_local(result: dict, title: str, path) -> None:
+    fig = local_shap_figure(result, title)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def _plot_lime(result: dict, title: str, path) -> None:
+    fig = local_lime_figure(result, title)
     fig.savefig(path, dpi=130)
     plt.close(fig)
 

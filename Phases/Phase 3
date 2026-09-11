@@ -1,0 +1,169 @@
+# Phase 3 — Streamlit decision app — COMPLETION REPORT
+
+**Status:** ✅ complete · pushed to `origin/main`
+**Date:** 2026-09-11
+**Builds on:** Phase 1 artefacts (model, preprocessor) and Phase 2 (`src/explain.py`)
+
+---
+
+## What was built
+
+### Layout
+
+```
+streamlit_app.py                  entry point / Home page
+pages/
+  1_Score_Applicant.py            pick a test-set row or fill a form; set threshold
+  2_Why_This_Decision.py          SHAP + LIME charts, reason codes
+  3_What_If.py                    sliders for top-8 features, live re-scoring
+  4_Global_Insights.py            model performance + Phase 2 SHAP figures
+app_lib/
+  common.py                       cached loaders, session-state, form-building
+.streamlit/config.toml            theme (primaryColor, light base, minimal toolbar)
+```
+
+Streamlit's file-based multipage routing (`pages/` sibling to the entry script)
+is used rather than the newer `st.navigation`/`st.Page` API, for broader
+compatibility with the pinned Streamlit 1.39.
+
+**Import path:** each entry file inserts the project root onto `sys.path` at the
+top, before importing anything from `src` or `app_lib` — `.parent` in
+`streamlit_app.py` (root/streamlit_app.py), `.parents[1]` in `pages/*.py`
+(root/pages/X.py, one directory deeper). This avoids depending on Streamlit's
+CWD/sys.path behaviour, which differs across versions.
+
+### `app_lib/common.py` — shared app helpers
+- `get_model_bundle()`, `get_full_data()`, `get_test_split()`, `get_codebook_cached()`
+  — thin `st.cache_resource` / `st.cache_data` wrappers around `src.data` /
+  `src.explain` (which already `lru_cache` the truly expensive objects — model,
+  SHAP/LIME explainers — at the process level; these wrappers just save repeated
+  DataFrame decoding on every Streamlit rerun).
+- `score_applicant(applicant, threshold)` — one predict_proba call + decision.
+- `default_applicant()` — dataset median (numeric) / mode (categorical) applicant.
+- `ensure_state()` — guarantees `st.session_state.threshold` and `.applicant`
+  exist no matter which page the user lands on first (Streamlit lets users jump
+  straight to any page via the sidebar or a URL).
+- `render_applicant_form(container, current, key_prefix, features)` — one
+  `st.selectbox` (categoricals, options from the data) or `st.slider` (numerics,
+  range = dataset min/max) per feature, with a stable `f"{key_prefix}_{feature}"`
+  widget key.
+- `reseed_form()` / `sync_whatif_defaults()` — solve the standard Streamlit
+  gotcha where a keyed widget ignores a new `value=` after the key already
+  exists in `session_state`. `sync_whatif_defaults` compares a signature of the
+  current base applicant against the last-seen one and clears the What-if
+  page's widget keys when it changes, so switching applicants on page 1 doesn't
+  leave page 3's sliders showing stale data.
+
+### Page 1 — Score an applicant
+Threshold slider up top (drives every other page). Two modes: **pick from test
+set** (row index → shows the true historical label, explicitly marked as not
+seen by the model) or **enter manually** (20-field form seeded from the current
+applicant, with "reset to dataset default" and "load current applicant" buttons).
+Always ends with a P(default) / threshold / decision summary.
+
+### Page 2 — Why this decision
+Calls `explain_local(applicant, run_lime=True)` directly, renders
+`local_shap_figure()` and `local_lime_figure()` (the Phase 2 plotting functions,
+refactored to return `Figure` objects instead of only saving to disk — see
+below) side by side via `st.pyplot`, then `reason_codes()` as a bullet list.
+Closes each figure after rendering to avoid a matplotlib figure leak across
+Streamlit reruns.
+
+### Page 3 — What-if
+Sliders/dropdowns for `global_importance().head(8)` — the 8 highest mean-|SHAP|
+features — seeded from the current applicant, everything else held fixed.
+Shows original vs modified P(default) with a `st.metric` delta, a "reset sliders"
+button, an expander with the modified applicant's own SHAP chart (LIME skipped
+here — it's ~1-3s per call, too slow for live slider dragging), and a "use this
+as my current applicant" button that writes the scenario back into session state.
+
+### Page 4 — Global insights
+Pure `st.image()` of the Phase 1/2 pre-rendered PNGs plus the `metrics.json`
+numbers — instant regardless of SHAP compute cost, since nothing here is
+recomputed live.
+
+### `src/explain.py` refactor
+Split each local plotting function into a figure-builder (`local_shap_figure`,
+`local_lime_figure`, returning `matplotlib.figure.Figure`) and a thin
+save-to-disk wrapper (`_plot_local`, `_plot_lime`) that calls it and `savefig`s.
+Phase 2's `python -m src.explain` behaviour is unchanged; Phase 3 reuses the
+figure-builders directly instead of re-plotting from scratch.
+
+---
+
+## Verification
+
+No browser or `st.testing` tooling was available for a full click-through, so
+the app was verified two ways:
+
+1. **Live server smoke test** — launched `streamlit run streamlit_app.py
+   --server.headless true` in the background and curled the base URL and all
+   four page routes; server log showed no tracebacks.
+2. **`streamlit.testing.v1.AppTest`** (the real check — a plain `curl` to a
+   Streamlit page route only fetches the static SPA shell, it doesn't execute
+   the page's Python server-side): ran every page headlessly and asserted
+   `at.exception` is empty, then exercised the interactive paths:
+   - Page 1: switched to "Enter manually", clicked "Reset to dataset default",
+     changed a selectbox, changed a slider — no exceptions.
+   - Page 3: changed a selectbox, changed a slider, clicked "Reset sliders",
+     clicked "Use this what-if scenario" — no exceptions.
+
+   This caught one real bug: `st.image(..., use_container_width=True)` isn't
+   supported in Streamlit 1.39 (added later) — raised `TypeError` on Global
+   Insights. Fixed by switching every `st.image` call to `use_column_width=True`
+   (the 1.39-compatible equivalent); `st.pyplot`/`st.dataframe` do accept
+   `use_container_width` in 1.39 and were left as-is.
+
+No screenshots were captured this session (no headless-browser tool available
+in this environment) — running `streamlit run streamlit_app.py` locally and
+screenshotting each page is a trivial follow-up, noted for Phase 4 polish.
+
+---
+
+## How to run
+
+```bash
+.venv\Scripts\activate
+streamlit run streamlit_app.py
+```
+
+Requires Phase 1 + Phase 2 artefacts to already exist (`models/*.joblib`,
+`models/shap_values.joblib`) — all committed, so a fresh clone works without
+retraining.
+
+---
+
+## Files
+
+Added:
+```
+streamlit_app.py
+pages/1_Score_Applicant.py
+pages/2_Why_This_Decision.py
+pages/3_What_If.py
+pages/4_Global_Insights.py
+app_lib/__init__.py
+app_lib/common.py
+.streamlit/config.toml
+```
+Changed: `src/explain.py` (figure-builder refactor, behaviour-preserving),
+`README.md` (status + Run Phase 3 section + layout).
+
+## Exit criteria — all met
+
+- [x] App launches from the venv with no server-side exceptions (AppTest, all 5 scripts)
+- [x] Scoring works for both a test-set applicant and a hand-built one
+- [x] Local SHAP + LIME explanation and reason codes render for the current applicant
+- [x] What-if sliders re-score live and show a delta against the original
+- [x] Global insights page reuses the Phase 1/2 figures without recomputation
+- [x] No retraining needed — runs entirely off committed artefacts
+- [x] Committed and pushed to `origin/main`
+
+## Deferred to Phase 4
+
+- Fairness page (group metrics by `sex` / `age_group` / `foreign_worker`)
+- ECOA / Regulation B adverse-action notice generation from `reason_codes()`
+- Threshold tuning under the dataset's 5:1 cost asymmetry
+- `MODEL_CARD.md`, `reports/report_notes.md`
+- Streamlit Community Cloud deployment + live screenshots
+- `tests/` unit tests

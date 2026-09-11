@@ -17,8 +17,8 @@ decisions under fair-lending rules (ECOA / Regulation B, EU AI Act).
 |---|---|---|
 | **1. Data & baseline model** | reproducible pipeline, LR vs XGBoost, evaluation, persisted artefacts | ✅ done |
 | **2. Explainability engine** | SHAP + LIME module, global & local explanations, reason codes, agreement analysis | ✅ done |
-| 3. Streamlit decision app | scoring, local explanations, what-if sliders, global insights | ⬜ next |
-| 4. Fairness audit + deploy | group fairness metrics, adverse-action codes, model card, Streamlit Cloud | ⬜ |
+| **3. Streamlit decision app** | scoring, local explanations, what-if sliders, global insights | ✅ done |
+| 4. Fairness audit + deploy | group fairness metrics, adverse-action codes, model card, Streamlit Cloud | ⬜ next |
 
 ---
 
@@ -89,6 +89,28 @@ Writes: `models/shap_values.joblib` (cached values for all 1,000 rows),
 **SHAP vs LIME:** sign agreement **0.97**, top-5 Jaccard 0.43 — the methods almost
 always agree on *direction*, less so on exact rank.
 
+## Run Phase 3 — the app
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Four pages (sidebar navigation):
+
+| Page | What it does |
+|---|---|
+| **Home** | dataset + model summary |
+| **1 · Score an applicant** | pick a test-set row or fill in a form; set the decision threshold |
+| **2 · Why this decision** | SHAP + LIME charts and plain-language reason codes for the current applicant |
+| **3 · What-if** | sliders for the 8 most influential features, live re-scoring vs the original |
+| **4 · Global insights** | model performance + the Phase 2 SHAP figures |
+
+The current applicant and threshold are held in `st.session_state` and carry over
+between pages. All heavy lifting (model, SHAP/LIME explainers) is cached at the
+process level (`functools.lru_cache` in `src/explain.py`, `st.cache_resource` /
+`st.cache_data` in `app_lib/common.py`), so only the *first* explanation on a
+freshly-started server is slow.
+
 ## Layout
 
 ```
@@ -100,6 +122,10 @@ src/
   evaluate.py     metrics + ROC / PR / confusion-matrix plots
   train.py        LR vs XGBoost, 5-fold CV, persist model + preprocessor + metrics
   explain.py      SHAP (TreeExplainer, prob space) + LIME; global/local/reason codes
+app_lib/
+  common.py       cached loaders, session-state, applicant-form widget builder
+streamlit_app.py  app entry point (Home page) — `streamlit run streamlit_app.py`
+pages/            the other 3 app pages (Streamlit's file-based multipage routing)
 data/             dataset notes; raw file downloaded on first run (git-ignored)
 models/           trained artefacts + shap_values.joblib (committed)
 reports/          metrics.json, shap_vs_lime.md, figures/
